@@ -49,7 +49,7 @@ export default function SessionPage({ params }: { params: { code: string } }) {
   // for the OTHER participant finishing -- never to re-derive whether
   // *I* just finished, since that's already known locally on submit.
   async function checkStatus(pid: string) {
-    const res = await fetch(`/api/session/${code}`);
+    const res = await fetch(`/api/session/${code}`, { cache: "no-store" });
     if (!res.ok) { setStage("notfound"); return; }
     const data = await res.json();
     const a = data.participants.A, b = data.participants.B;
@@ -79,7 +79,7 @@ export default function SessionPage({ params }: { params: { code: string } }) {
   function startPolling(pid: string) {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
-      const res = await fetch(`/api/session/${code}`);
+      const res = await fetch(`/api/session/${code}`, { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json();
       if (data.bothDone && data.participants.A && data.participants.B) {

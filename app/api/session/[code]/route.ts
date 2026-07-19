@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
+// This route reports live session status and is polled every few seconds
+// while participants wait for each other to finish. Without these two
+// exports, Next.js can treat it as a static route (no dynamic APIs like
+// cookies/headers are used) and cache the response indefinitely -- which
+// would mean bothDone never updates no matter how many times it's called,
+// even though the underlying data has changed. Never remove these.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // Returns session status. Answers are only included once BOTH
 // participants have completed -- enforced here, not just in the UI.
 export async function GET(_req: Request, { params }: { params: { code: string } }) {
@@ -32,7 +41,7 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
         B: b ? { nickname: b.nickname, completed: b.completed, answers: bothDone ? b.answers : undefined } : null,
       },
       bothDone,
-    });
+    }, { headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Unknown server error" }, { status: 500 });
   }
