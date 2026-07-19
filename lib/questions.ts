@@ -85,7 +85,17 @@ export const TR = {
   },
 };
 
-export const QUESTIONS = [
+export type QuestionOption = { label: string; label_ar: string; tags: string[] };
+export type Question = {
+  id: string;
+  section: "personality" | "lifestyle" | "values" | "fun" | "short";
+  prompt: string;
+  prompt_ar: string;
+  type?: "text";
+  options?: QuestionOption[];
+};
+
+export const QUESTIONS: Question[] = [
   { id: "p1", section: "personality",
     prompt: "It's Friday night. What are you doing?", prompt_ar: "ليلة جمعة. وش تسوي؟",
     options: [

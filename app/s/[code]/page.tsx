@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Heart, Lock, ArrowRight, ArrowLeft, MessageCircle, Sparkles } from "lucide-react";
+import { Heart, Lock, ArrowRight, ArrowLeft, MessageCircle, Sparkles, Home, Download } from "lucide-react";
 import { TR, QUESTIONS } from "@/lib/questions";
 import { buildResults } from "@/lib/results";
 import {
@@ -33,6 +33,9 @@ export default function SessionPage({ params }: { params: { code: string } }) {
   const [results, setResults] = useState<any>(null);
   const pollRef = useRef<any>(null);
 
+  const [submitError, setSubmitError] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
   useEffect(() => {
     const savedPid = typeof window !== "undefined" ? localStorage.getItem(pidKey) : null;
     if (savedPid) { setParticipantId(savedPid); checkStatus(savedPid); }
@@ -41,6 +44,9 @@ export default function SessionPage({ params }: { params: { code: string } }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Used only to resume a session (e.g. after a page reload) or to poll
+  // for the OTHER participant finishing -- never to re-derive whether
+  // *I* just finished, since that's already known locally on submit.
   async function checkStatus(pid: string) {
     const res = await fetch(`/api/session/${code}`);
     if (!res.ok) { setStage("notfound"); return; }
@@ -49,14 +55,8 @@ export default function SessionPage({ params }: { params: { code: string } }) {
     const savedRole = localStorage.getItem(pidKey + "_role") as "A" | "B" | null;
     const myRecord = savedRole === "A" ? a : b;
 
-    if (myRecord?.completed && data.bothDone) {
-      const nA = a.nickname || t.youAre;
-      const nB = b.nickname || t.personB;
-      const res2 = buildResults(a.answers, b.answers, nA, nB, lang);
-      setResults({ ...res2, nameA: nA, nameB: nB });
-      setStage("results");
-      setConfetti(true);
-      setTimeout(() => setConfetti(false), 2300);
+    if (data.bothDone && a && b) {
+      showResults(a, b);
     } else if (myRecord?.completed) {
       setStage("waiting");
       startPolling(pid);
@@ -65,9 +65,27 @@ export default function SessionPage({ params }: { params: { code: string } }) {
     }
   }
 
+  function showResults(a: any, b: any) {
+    const nA = a.nickname || t.youAre;
+    const nB = b.nickname || t.personB;
+    const res2 = buildResults(a.answers, b.answers, nA, nB, lang);
+    setResults({ ...res2, nameA: nA, nameB: nB });
+    setStage("results");
+    setConfetti(true);
+    setTimeout(() => setConfetti(false), 2300);
+  }
+
   function startPolling(pid: string) {
     if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(() => checkStatus(pid), 3000);
+    pollRef.current = setInterval(async () => {
+      const res = await fetch(`/api/session/${code}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.bothDone && data.participants.A && data.participants.B) {
+        clearInterval(pollRef.current);
+        showResults(data.participants.A, data.participants.B);
+      }
+    }, 3000);
   }
 
   async function joinSession() {
@@ -84,22 +102,48 @@ export default function SessionPage({ params }: { params: { code: string } }) {
     setStage("quiz");
   }
 
+  // Lets the person who just finished hand the device to the other
+  // participant right away, instead of only sharing the link.
+  function handOffDevice() {
+    if (pollRef.current) clearInterval(pollRef.current);
+    localStorage.removeItem(pidKey);
+    localStorage.removeItem(pidKey + "_role");
+    setParticipantId(null);
+    setAnswers({});
+    setQIndex(0);
+    setNickname("");
+    setStage("nickname");
+  }
+
+  async function submitFinalAnswers(next: Answers) {
+    setSubmitting(true);
+    setSubmitError(false);
+    try {
+      const res = await fetch("/api/answers", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantId, answers: next, completed: true }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      setSubmitting(false);
+      setStage("waiting");
+      if (participantId) startPolling(participantId);
+    } catch {
+      setSubmitting(false);
+      setSubmitError(true);
+    }
+  }
+
   async function answerAndAdvance(val: any) {
     const q = QUESTIONS[qIndex];
     const next = { ...answers, [q.id]: val };
     setAnswers(next);
     setLeaving(true);
-    setTimeout(async () => {
+    setTimeout(() => {
       setLeaving(false);
       if (qIndex < QUESTIONS.length - 1) {
         setQIndex(i => i + 1);
       } else {
-        await fetch("/api/answers", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ participantId, answers: next, completed: true }),
-        });
-        setStage("waiting");
-        if (participantId) { startPolling(participantId); checkStatus(participantId); }
+        submitFinalAnswers(next);
       }
     }, 190);
   }
@@ -118,9 +162,9 @@ export default function SessionPage({ params }: { params: { code: string } }) {
 
       {stage === "nickname" && (
         <div className="max-w-xl mx-auto px-6 pt-24 pb-24 rise">
-          <div className="flex items-center gap-2 mb-10">
+          <a href="/" className="flex items-center gap-2 mb-10 w-fit">
             <Mark size={26} /><span className="font-display text-lg">{t.logo}</span>
-          </div>
+          </a>
           <h2 className="font-display text-3xl mb-3">{t.whatCallYou}</h2>
           <p className="text-[15px] mb-8" style={{ color: "#5B5065" }}>{t.nicknameSub}</p>
           <input value={nickname} onChange={e => setNickname(e.target.value)} placeholder={t.nicknamePlaceholder} autoFocus
@@ -137,9 +181,12 @@ export default function SessionPage({ params }: { params: { code: string } }) {
           <div className="blob-a absolute top-10 -end-16 w-48 h-48 rounded-full blur-3xl opacity-[0.12]" style={{ background: sectionColor }} />
           <div className="max-w-xl mx-auto px-6 pt-8 pb-24 min-h-screen flex flex-col relative">
             <div className="flex items-center justify-between mb-3">
-              <button onClick={() => setQIndex(i => Math.max(0, i - 1))} disabled={qIndex === 0} className="disabled:opacity-0" style={{ color: "#9A8FA0" }}>
-                <ArrowLeft size={18} className="rtl:rotate-180" />
-              </button>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setQIndex(i => Math.max(0, i - 1))} disabled={qIndex === 0} className="disabled:opacity-0" style={{ color: "#9A8FA0" }}>
+                  <ArrowLeft size={18} className="rtl:rotate-180" />
+                </button>
+                <a href="/" style={{ color: "#9A8FA0" }}><Home size={16} /></a>
+              </div>
               <span className="text-xs font-semibold" style={{ color: "#9A8FA0" }}>{qIndex + 1} / {QUESTIONS.length}</span>
             </div>
             <Stepper qIndex={qIndex} />
@@ -169,6 +216,21 @@ export default function SessionPage({ params }: { params: { code: string } }) {
                     })}
                   </div>
                 )}
+                {qIndex === QUESTIONS.length - 1 && submitting && (
+                  <p className="text-center text-sm mt-5" style={{ color: "#9A8FA0" }}>
+                    {lang === "ar" ? "جارٍ الحفظ..." : "Saving..."}
+                  </p>
+                )}
+                {qIndex === QUESTIONS.length - 1 && submitError && (
+                  <div className="mt-5 rounded-2xl px-4 py-3.5 border-2 text-center" style={{ borderColor: "#E76F51", background: "#FBE3DC" }}>
+                    <p className="text-sm mb-3" style={{ color: "#7A2E1D" }}>
+                      {lang === "ar" ? "تعذر حفظ إجاباتك. تحقق من الاتصال وحاول مرة أخرى." : "Couldn't save your answers. Check your connection and try again."}
+                    </p>
+                    <PrimaryButton onClick={() => submitFinalAnswers(answers)} className="w-full">
+                      {lang === "ar" ? "إعادة المحاولة" : "Try again"}
+                    </PrimaryButton>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -186,15 +248,26 @@ export default function SessionPage({ params }: { params: { code: string } }) {
             <p className="text-[15px] mb-4 whitespace-pre-line" style={{ color: "#5B5065" }}>
               {lang === "ar" ? "بانتظار الطرف الثاني لإنهاء الأسئلة. سيتحدث هذا تلقائيًا." : "Waiting for the other person to finish. This will update automatically."}
             </p>
-            <div className="rounded-xl px-4 py-3 inline-flex items-center gap-2 text-xs font-semibold" style={{ background: "#E4EDEB", color: "#2F4858" }}>
+            <div className="rounded-xl px-4 py-3 inline-flex items-center gap-2 text-xs font-semibold mb-8" style={{ background: "#E4EDEB", color: "#2F4858" }}>
               <Lock size={13} /> {t.footerNote}
+            </div>
+            <div className="border-t pt-6" style={{ borderColor: "#EAD9C8" }}>
+              <p className="text-sm mb-4" style={{ color: "#5B5065" }}>
+                {lang === "ar" ? "الشخص الثاني يجيب من نفس الجهاز؟" : "Is the other person answering from this device?"}
+              </p>
+              <PrimaryButton onClick={handOffDevice} className="w-full mb-3">
+                {lang === "ar" ? "تسليم الجهاز الآن" : "Hand off this device now"}
+              </PrimaryButton>
+              <a href="/" className="text-xs font-semibold underline" style={{ color: "#9A8FA0" }}>
+                {lang === "ar" ? "العودة للصفحة الرئيسية" : "Back to home"}
+              </a>
             </div>
           </div>
         </div>
       )}
 
       {stage === "results" && results && (
-        <ResultsView t={t} nameA={results.nameA} nameB={results.nameB} results={results} />
+        <ResultsView t={t} lang={lang} nameA={results.nameA} nameB={results.nameB} results={results} />
       )}
     </div>
   );
@@ -250,13 +323,21 @@ function Section({ title, icon: Icon, tint, iconColor, children, delay }: any) {
   );
 }
 
-function ResultsView({ t, nameA, nameB, results }: any) {
+function ResultsView({ t, lang, nameA, nameB, results }: any) {
   const { traitsA, traitsB, similarities, topics, starters, greenFlags } = results;
   return (
     <div className="relative overflow-hidden">
-      <div className="blob-a absolute top-0 -start-20 w-56 h-56 rounded-full blur-3xl opacity-[0.14]" style={{ background: "#6B9080" }} />
-      <div className="blob-b absolute top-96 -end-20 w-56 h-56 rounded-full blur-3xl opacity-[0.14]" style={{ background: "#E76F51" }} />
-      <div className="relative max-w-2xl mx-auto px-6 pt-14 pb-28">
+      <div className="blob-a absolute top-0 -start-20 w-56 h-56 rounded-full blur-3xl opacity-[0.14] print:hidden" style={{ background: "#6B9080" }} />
+      <div className="blob-b absolute top-96 -end-20 w-56 h-56 rounded-full blur-3xl opacity-[0.14] print:hidden" style={{ background: "#E76F51" }} />
+      <div className="relative max-w-2xl mx-auto px-6 pt-14 pb-28" id="results-printable">
+        <div className="flex items-center justify-between mb-6 print:hidden">
+          <a href="/" className="flex items-center gap-2 text-sm font-semibold" style={{ color: "#9A8FA0" }}>
+            <Home size={15} /> {lang === "ar" ? "الرئيسية" : "Home"}
+          </a>
+          <button onClick={() => window.print()} className="flex items-center gap-1.5 text-sm font-semibold rounded-full px-3.5 py-1.5 border" style={{ color: "#2F4858", borderColor: "#EAD9C8" }}>
+            <Download size={15} /> {lang === "ar" ? "تحميل النتيجة" : "Download"}
+          </button>
+        </div>
         <div className="text-center mb-12 rise">
           <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#9A8FA0" }}>{t.reportUnlocked}</p>
           <h1 className="font-display text-3xl mb-2">{nameA} &amp; {nameB}</h1>
