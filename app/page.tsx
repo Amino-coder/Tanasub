@@ -14,24 +14,12 @@ export default function LandingPage() {
   const dir = lang === "ar" ? "rtl" : "ltr";
   const router = useRouter();
 
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
   async function startSession() {
     setLoading(true);
-    setErrorMsg(null);
-    try {
-      const res = await fetch("/api/session/create", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || !data.code) {
-        setErrorMsg(data.error || "Something went wrong. Please try again.");
-        return;
-      }
-      setCode(data.code);
-    } catch {
-      setErrorMsg("Couldn't reach the server. Check your connection and try again.");
-    } finally {
-      setLoading(false);
-    }
+    const res = await fetch("/api/session/create", { method: "POST" });
+    const data = await res.json();
+    setLoading(false);
+    if (data.code) setCode(data.code);
   }
 
   const link = code ? `${typeof window !== "undefined" ? window.location.origin : ""}/s/${code}` : "";
@@ -71,13 +59,10 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="flex flex-col items-center gap-3 mb-14">
+            <div className="flex justify-center mb-14">
               <PrimaryButton onClick={startSession} disabled={loading} className="px-8 py-4 text-base">
                 {loading ? "..." : t.startSession} <ArrowRight size={17} className="rtl:rotate-180" />
               </PrimaryButton>
-              {errorMsg && (
-                <p className="text-sm text-center max-w-xs" style={{ color: "#C2451D" }}>{errorMsg}</p>
-              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
