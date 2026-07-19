@@ -44,14 +44,3 @@
 
 @keyframes fadein { from { opacity: 0; transform: translateY(6px);} to { opacity:1; transform:translateY(0);} }
 @keyframes fall { to { transform: translateY(112vh) rotate(360deg); opacity: 0; } }
-
-@media print {
-  .print\:hidden { display: none !important; }
-  body { background: white !important; }
-  .grain::before, .blob-a, .blob-b { display: none !important; }
-  #results-printable {
-    max-width: 100% !important;
-    padding: 0 !important;
-  }
-  .backdrop-blur { backdrop-filter: none !important; }
-}

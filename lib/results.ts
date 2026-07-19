@@ -8,47 +8,47 @@ export const TRAIT_TR = {
 };
 export const PERSONALITY_TAGS = new Set(Object.keys(TRAIT_TR));
 
-function traitCounts(answers: Record<string, any>): Record<string, number> {
-  const counts: Record<string, number> = {};
-  QUESTIONS.forEach((q: any) => {
+function traitCounts(answers) {
+  const counts = {};
+  QUESTIONS.forEach(q => {
     if (q.type === "text") return;
     const val = answers[q.id];
     if (val == null) return;
     const opt = q.options[val];
-    opt.tags.forEach((t: string) => { counts[t] = (counts[t] || 0) + 1; });
+    opt.tags.forEach(t => { counts[t] = (counts[t] || 0) + 1; });
   });
   return counts;
 }
-function topTraits(counts: Record<string, number>, n = 5): string[] {
+function topTraits(counts, n = 5) {
   return Object.entries(counts)
     .filter(([t]) => PERSONALITY_TAGS.has(t))
     .sort((a, b) => b[1] - a[1])
     .slice(0, n)
     .map(([t]) => t);
 }
-function traitLabel(t: string, lang: string) { return lang === "ar" ? (TRAIT_TR as Record<string,string>)[t] : t; }
-function optLabel(qId: string, answers: Record<string, any>, lang: string) {
+function traitLabel(t, lang) { return lang === "ar" ? TRAIT_TR[t] : t; }
+function optLabel(qId, answers, lang) {
   const q = QUESTIONS.find(q => q.id === qId);
   const val = answers[q.id];
   if (val == null) return null;
   const opt = q.options[val];
   return lang === "ar" ? opt.label_ar : opt.label;
 }
-function qPrompt(qId: string, lang: string) {
+function qPrompt(qId, lang) {
   const q = QUESTIONS.find(q => q.id === qId);
   return lang === "ar" ? q.prompt_ar : q.prompt;
 }
 
 export const TOPIC_QUESTIONS = ["l3","l4","l5","l6","v1","v2","v3","v4","v5"];
 
-export function buildResults(a: Record<string, any>, b: Record<string, any>, nameA: string, nameB: string, lang: string) {
+export function buildResults(a, b, nameA, nameB, lang) {
   const traitsA = topTraits(traitCounts(a)).map(t => traitLabel(t, lang));
   const traitsB = topTraits(traitCounts(b)).map(t => traitLabel(t, lang));
   const rawTraitsA = topTraits(traitCounts(a));
   const rawTraitsB = topTraits(traitCounts(b));
   const sharedRaw = rawTraitsA.filter(t => rawTraitsB.includes(t));
 
-  const similarities: string[] = [];
+  const similarities = [];
   TOPIC_QUESTIONS.concat(["f1","f2"]).forEach(qId => {
     if (a[qId] === b[qId] && a[qId] != null) {
       similarities.push(lang === "ar"
@@ -63,14 +63,14 @@ export function buildResults(a: Record<string, any>, b: Record<string, any>, nam
       : `You both come across as ${list.join(" and ").toLowerCase()}.`);
   }
 
-  const topics: { title: string; a: any; b: any }[] = [];
+  const topics = [];
   TOPIC_QUESTIONS.forEach(qId => {
     if (a[qId] != null && b[qId] != null && a[qId] !== b[qId]) {
       topics.push({ title: qPrompt(qId, lang), a: optLabel(qId, a, lang), b: optLabel(qId, b, lang) });
     }
   });
 
-  const starters: string[] = [];
+  const starters = [];
   if (a.f1 != null && b.f1 != null) {
     if (a.f1 === b.f1) {
       starters.push(lang === "ar"
@@ -107,8 +107,8 @@ export function buildResults(a: Record<string, any>, b: Record<string, any>, nam
     ? "وش الشي اللي والديك سووه صح بموضوع الشراكة؟ وش كنت تسوّيه مختلف؟"
     : "What did your parents get right about partnership? What would you do differently?");
 
-  const greenFlags: string[] = [];
-  const has = (t: string) => rawTraitsA.includes(t) || rawTraitsB.includes(t);
+  const greenFlags = [];
+  const has = (t) => rawTraitsA.includes(t) || rawTraitsB.includes(t);
   if (has("Reliable")) greenFlags.push(lang === "ar" ? "حضور ثابت يُعتمد عليه وقت الصعوبات." : "A steady, dependable presence when things get hard.");
   if (has("Warm")) greenFlags.push(lang === "ar" ? "دفء حقيقي يريح من حوله." : "Genuine warmth that puts people at ease.");
   if (has("Planner")) greenFlags.push(lang === "ar" ? "شخص يفكر مسبقًا فتقل الأمور اللي تفوتكم." : "Someone who thinks ahead, so less falls through the cracks.");
