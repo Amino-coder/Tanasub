@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// Server-only client. Uses the service role key, which must NEVER be
+// exposed to the browser (no NEXT_PUBLIC_ prefix) -- it bypasses RLS,
+// which is exactly why it's safe to use only here, in a server route,
+// after we've done our own checks in code.
 function admin() {
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 }
 
