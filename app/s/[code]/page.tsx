@@ -35,6 +35,7 @@ export default function SessionPage({ params }: { params: { code: string } }) {
 
   const [submitError, setSubmitError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [joining, setJoining] = useState(false);
 
   useEffect(() => {
     const savedPid = typeof window !== "undefined" ? localStorage.getItem(pidKey) : null;
@@ -89,17 +90,22 @@ export default function SessionPage({ params }: { params: { code: string } }) {
   }
 
   async function joinSession() {
-    if (!nickname.trim()) return;
-    const res = await fetch("/api/participant", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, nickname: nickname.trim() }),
-    });
-    if (!res.ok) { setStage("full"); return; }
-    const data = await res.json();
-    localStorage.setItem(pidKey, data.participantId);
-    localStorage.setItem(pidKey + "_role", data.role);
-    setParticipantId(data.participantId);
-    setStage("quiz");
+    if (!nickname.trim() || joining) return;
+    setJoining(true);
+    try {
+      const res = await fetch("/api/participant", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, nickname: nickname.trim() }),
+      });
+      if (!res.ok) { setStage("full"); return; }
+      const data = await res.json();
+      localStorage.setItem(pidKey, data.participantId);
+      localStorage.setItem(pidKey + "_role", data.role);
+      setParticipantId(data.participantId);
+      setStage("quiz");
+    } finally {
+      setJoining(false);
+    }
   }
 
   // Lets the person who just finished hand the device to the other
@@ -170,8 +176,8 @@ export default function SessionPage({ params }: { params: { code: string } }) {
           <input value={nickname} onChange={e => setNickname(e.target.value)} placeholder={t.nicknamePlaceholder} autoFocus
             className="w-full rounded-2xl px-5 py-4 text-lg mb-8 border-2 outline-none focus:border-[#2F4858] bg-white/90"
             style={{ borderColor: "#EAD9C8" }} />
-          <PrimaryButton onClick={joinSession} disabled={!nickname.trim()} className="w-full">
-            {t.begin} <ArrowRight size={16} className="rtl:rotate-180" />
+          <PrimaryButton onClick={joinSession} disabled={!nickname.trim() || joining} className="w-full">
+            {joining ? "..." : t.begin} <ArrowRight size={16} className="rtl:rotate-180" />
           </PrimaryButton>
         </div>
       )}
